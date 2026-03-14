@@ -18,7 +18,7 @@ def mock_registry(mocker):
 @pytest.fixture
 def valid_agent_data():
     return {
-        "name": "TestAgent3",
+        "name": "TestAgent",
         "provider": {
             "organization": "TestOrg",
             "url": "https://test.org"
@@ -64,6 +64,7 @@ def test_register_agent_duplicate(client, mock_registry, valid_agent_data):
 
 @pytest.mark.parametrize("field_to_remove", [
     "name",
+    "provider",
     "description",
     "capabilities",
     "default_input_modes",
