@@ -117,6 +117,9 @@ async def deregister_agent(
         if not success:
             raise HTTPException(status_code=404, detail="Agent not found")
         return success
+    except HTTPException as e:
+        # 捕获已经定义的 HTTPException，避免被 except Exception 捕获
+        raise e
     except Exception as e:
         logger.error(f"Unexpected error in deregister: {e}")
         raise HTTPException(status_code=500, detail="Internal server error") from e
