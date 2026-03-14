@@ -59,6 +59,10 @@ class RegistryCore:
         Register a new agent. Returns True if successful, False if duplicate.
         Raises ValueError if agent lacks required fields (name, provider.organization).
         """
+        if len(self._agents) > 40:
+            logger.error("Too many agents registered. Please deregister some agents.")
+            return False
+
         if not agent.name or not agent.provider or not agent.provider.organization:
             raise ValueError("Agent must have 'name' and 'provider.organization'")
 
@@ -82,7 +86,7 @@ class RegistryCore:
         key = self._make_key(name, organization)
         existing = self._agents.get(key)
         if not existing:
-            logger.info(f"Update failed: agent not found ({name}, {organization})")
+            logger.error(f"Update failed: agent not found ({name}, {organization})")
             return False
 
         if partial:
@@ -143,11 +147,15 @@ class RegistryCore:
             prompt = build_agent_selection_prompt(task, json.dumps(agents_info, ensure_ascii=False, indent=2))
             # Assume LLM returns a list of agent names (string)
             _, selected_names_str = self.llm.ask_llm(prompt)
-            # Parse selected_names_str as list of names (simplified: treat as comma-separated)
-            selected_names = [n.strip() for n in selected_names_str.split(',') if n.strip()]
+            # Parse selected_names_str as list of names (JSON format)
+            selected_names = json.loads(selected_names_str) if selected_names_str else []
+
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error in agent selection: {e}")
+            raise ValueError("LLM returned invalid JSON for agent selection")
         except Exception as e:
             logger.error(f"LLM error during agent selection: {e}")
-            return []
+            raise ValueError("LLM error during agent selection") from e
 
         # Filter agents whose names are in the selected list
         # Note: This assumes names are unique across organizations; if not, we need a better key.
