@@ -1,5 +1,10 @@
 #!/bin/bash
 
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
 # Get the absolute path of the script's directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -19,6 +24,17 @@ if [ "$EUID" -eq 0 ]; then
     echo "Executing commands as root may pose security risks. Please proceed with caution."
     echo "   It is recommended to use root privileges only when necessary."
     echo "============================="
+
+    read -p "$(echo -e "${YELLOW}Do you want to continue?(y/n): ${NC}")" choice
+    case "$choice" in
+        [Yy]|[Yy][Ee][Ss])
+            echo "Continue to execute..."
+            ;;
+        *)
+            echo "Operation canceled"
+            exit 0
+            ;;
+    esac
 fi
 
 # Change to target directory
