@@ -12,6 +12,15 @@ from common.util.config_util import get_conf
 
 from uvicorn import config
 
+def get_user_info_from_env():
+    """从环境变量获取用户信息"""
+    user_info = {
+        'username': os.environ.get('APP_USER', 'unknown'),
+        'uid': os.environ.get('APP_UID', 'unknown'),
+        'gid': os.environ.get('APP_GID', 'unknown'),
+    }
+    return user_info
+
 def my_create_ssl_context(
         certfile: str | os.PathLike[str],
         keyfile: str | os.PathLike[str] | None,

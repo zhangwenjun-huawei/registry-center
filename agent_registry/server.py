@@ -27,6 +27,7 @@ from agent_registry.config import (
 from agent_registry.core import RegistryCore
 from agent_registry.middleware import ConnectionLimitMiddleware, TimeoutMiddleware
 from agent_registry.model.validated_agentcard import ValidatedAgentCard
+from common.log.audit_logger import audit_logger, OperationResult, LogLevel, OperatorObject
 from common.util.config_util import get_conf
 
 # ---------- Rate Limiter Setup (In-Memory) ----------
@@ -156,6 +157,7 @@ async def security_middleware(request: Request, call_next):
     summary="Register a new agent",
 )
 async def register_agent(
+        request: Request,
         agent: ValidatedAgentCard,
         _: None = Depends(RateLimiter('register')),  # Apply rate limiting
         registry: RegistryCore = Depends(get_registry),
@@ -165,25 +167,62 @@ async def register_agent(
     The combination (name, provider.organization) must be unique.
     Returns True if registered, False if duplicate.
     """
+    client_ip = request.client.host
+    details = {"agentName": agent.name, "organization": agent.provider.organization,
+               "url": agent.provider.url}
     if len(get_registry().get_agents()) >= int(config.get('agent.num.max', 40)):
+        details["message"] = "Agent registration limit exceeded."
+        audit_logger.log(operation_name="Agent Registration",
+                         level=LogLevel.MINOR,
+                         result=OperationResult.FAILURE,
+                         object_name=OperatorObject.AGENT,
+                         details=details,
+                         client_ip=client_ip)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Agent registration limit exceeded.",
         )
     key = make_key(agent.name, agent.provider.organization)
     if key in get_registry().get_agents():
+        details["message"] = "Registration skipped: duplicate agent."
+        audit_logger.log(operation_name="Agent Registration",
+                         level=LogLevel.MINOR,
+                         result=OperationResult.FAILURE,
+                         object_name=OperatorObject.AGENT,
+                         details=details,
+                         client_ip=client_ip)
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Registration skipped: duplicate agent ({agent.name}, {agent.provider.organization})",
         )
+
     try:
         success = await registry.register(agent)
+        audit_logger.log(operation_name="Agent Registration",
+                         level=LogLevel.MINOR,
+                         result=OperationResult.SUCCESS,
+                         object_name=OperatorObject.AGENT,
+                         details=details,
+                         client_ip=client_ip)
         return success
     except ValueError as e:
+        details["message"] = str(e)
+        audit_logger.log(operation_name="Agent Registration",
+                         level=LogLevel.MINOR,
+                         result=OperationResult.FAILURE,
+                         object_name=OperatorObject.AGENT,
+                         details=details,
+                         client_ip=client_ip)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
         ) from e
     except Exception as e:
+        audit_logger.log(operation_name="Agent Registration",
+                         level="Minor",
+                         result=OperationResult.FAILURE,
+                         object_name=OperatorObject.AGENT,
+                         details=details,
+                         client_ip=client_ip)
         logger.error(f"Unexpected error in register: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
