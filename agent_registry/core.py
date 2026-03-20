@@ -51,15 +51,7 @@ class RegistryCore:
         Raises ValueError if agent lacks required fields (name, provider.organization).
         """
         async with asyncio.Lock():
-            if len(self._agents) > MAX_REGISTER_NUM:
-                logger.error("Too many agents registered. Please deregister some agents.")
-                return False
-
             key = self._make_key(agent.name, agent.provider.organization)
-            if key in self._agents:
-                logger.info(f"Registration skipped: duplicate agent ({agent.name}, {agent.provider.organization})")
-                return False
-
             self._agents[key] = agent
             self._save()
             logger.info(f"Registered agent: {agent.name} (org={agent.provider.organization})")
@@ -80,3 +72,6 @@ class RegistryCore:
                 continue
             result.append(agent)
         return result
+
+    def get_agents(self):
+        return self._agents

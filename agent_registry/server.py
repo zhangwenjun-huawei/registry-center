@@ -8,8 +8,9 @@ and persistence using a JSON file.
 """
 
 import asyncio
+import time
 from functools import partial, lru_cache
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from a2a.types import AgentCard
 from fastapi import FastAPI, HTTPException, Query, Request, Depends, status
@@ -35,17 +36,15 @@ sync_storage = storage.MemoryStorage()
 limiter = strategies.MovingWindowRateLimiter(sync_storage)
 
 
-def parse_rate_limit(rate_string: str):
+def parse_rate_limit(interface_name: str):
     """
     Parse a rate limit string like "10/minute" into a RateLimitItem.
     Returns None if parsing fails.
     """
+    rate_string = f"{int(config.get('flowcontrol.ratelimit.register', 1))}/second" if interface_name == "register" \
+        else f"{int(config.get('flowcontrol.ratelimit.query', 10))}/second"
     items = parse_many(rate_string)
     return items[0] if items else None
-
-
-# Global default rate limit from configuration.
-DEFAULT_RATE = parse_rate_limit(MAX_REQUEST_RATE)
 
 
 async def async_hit(rate_item, *identifiers: str, cost=1) -> bool:
@@ -63,8 +62,8 @@ class RateLimiter:
     Uses X-Forwarded-For header when behind a proxy.
     """
 
-    def __init__(self, rate_string: str = None):
-        self.rate_item = parse_rate_limit(rate_string) if rate_string else DEFAULT_RATE
+    def __init__(self, interface_name: str = None):
+        self.rate_item = parse_rate_limit(interface_name)
         if not self.rate_item:
             raise ValueError("Invalid rate limit configuration")
 
@@ -102,6 +101,7 @@ app.add_middleware(
     TimeoutMiddleware,
     timeout_seconds=int(config.get("connection.timeout", 30))
 )
+
 
 # ---------- Dependency: Registry Core (Singleton) ----------
 @lru_cache(maxsize=1)
@@ -156,15 +156,26 @@ async def security_middleware(request: Request, call_next):
     summary="Register a new agent",
 )
 async def register_agent(
-    agent: ValidatedAgentCard,
-    _: None = Depends(RateLimiter()),  # Apply rate limiting
-    registry: RegistryCore = Depends(get_registry),
+        agent: ValidatedAgentCard,
+        _: None = Depends(RateLimiter('register')),  # Apply rate limiting
+        registry: RegistryCore = Depends(get_registry),
 ):
     """
     Register a new agent.
     The combination (name, provider.organization) must be unique.
     Returns True if registered, False if duplicate.
     """
+    if len(get_registry().get_agents()) >= int(config.get('agent.num.max', 40)):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Agent registration limit exceeded.",
+        )
+    key = make_key(agent.name, agent.provider.organization)
+    if key in get_registry().get_agents():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Registration skipped: duplicate agent ({agent.name}, {agent.provider.organization})",
+        )
     try:
         success = await registry.register(agent)
         return success
@@ -186,9 +197,9 @@ async def register_agent(
     summary="Exact search",
 )
 async def list_agents_exact(
-    name: Optional[str] = Query(None, description="Exact agent name"),
-    organization: Optional[str] = Query(None, description="Exact organization"),
-    registry: RegistryCore = Depends(get_registry),
+        name: Optional[str] = Query(None, description="Exact agent name"),
+        organization: Optional[str] = Query(None, description="Exact organization"),
+        registry: RegistryCore = Depends(get_registry), _: None = Depends(RateLimiter('query')),  #
 ):
     """
     Search agents by exact fields (AND combination).
@@ -203,3 +214,8 @@ async def list_agents_exact(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error",
         ) from e
+
+
+def make_key(name: str, organization: str) -> Tuple[str, str]:
+    """Create a normalized key for indexing."""
+    return name.strip(), organization.strip()
