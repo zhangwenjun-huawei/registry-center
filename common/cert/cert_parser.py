@@ -34,13 +34,13 @@ def parse_cer_certificate(cert_path: str) -> X509Obj:
         raise exception
 
 
-def parse_pem_files(cert_path: str, password: str = None) -> PrivateKeyTypes:
+def parse_pem_files(cert_path: str, password: bytes = None) -> PrivateKeyTypes:
     try:
         with open(cert_path, 'rb') as f:
             p12_data = f.read()
 
         # 使用cryptography解析私钥文件
-        password_bytes = password.encode() if password else None
+        password_bytes = password
         private_key = serialization.load_pem_private_key(
             p12_data,
             password=password_bytes
