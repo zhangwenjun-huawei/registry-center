@@ -1,8 +1,5 @@
-import asyncio
 from abc import ABC, abstractmethod
 from typing import Dict, Type
-
-from a2a.types import AgentCard
 
 from agent_registry.registry_instance import get_registry
 from common.custom.interface_type import InterfaceType
