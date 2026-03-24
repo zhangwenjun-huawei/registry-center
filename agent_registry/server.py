@@ -8,7 +8,7 @@ and persistence using a JSON file.
 """
 
 import asyncio
-from functools import partial, lru_cache
+from functools import partial
 from typing import List, Optional, Tuple, Any
 
 import anyio
@@ -20,14 +20,16 @@ from limits import strategies, storage, parse_many
 from starlette.responses import Response
 
 from agent_registry.config import (
-    PERSISTENCE_FILE,
     MAX_REQUEST_BODY_SIZE,
     MAX_URL_LENGTH,
 )
 from agent_registry.core import RegistryCore
+from agent_registry.get_registry import get_registry
 from agent_registry.middleware import ConnectionLimitMiddleware, TimeoutMiddleware
 from agent_registry.model.validated_agentcard import ValidatedAgentCard
-from common.log.audit_logger import audit_logger, OperationResult, LogLevel, OperatorObject, OperationName
+from common.custom.custom_handle import HandlerRegistry
+from common.custom.interface_type import InterfaceType
+from common.log.audit_logger import OperationResult, LogLevel, OperatorObject, OperationName
 from common.util.config_util import get_conf
 
 # ---------- Rate Limiter Setup (In-Memory) ----------
@@ -36,6 +38,7 @@ sync_storage = storage.MemoryStorage()
 # Moving window strategy provides smoother rate limiting.
 limiter = strategies.MovingWindowRateLimiter(sync_storage)
 
+audit_handle = HandlerRegistry.get_handler(InterfaceType.AUDIT)
 
 def parse_rate_limit(interface_name: str):
     """
@@ -147,17 +150,6 @@ register_semaphore = anyio.Semaphore(int(config.get("flowcontrol.parallelism.reg
 query_semaphore = anyio.Semaphore(int(config.get("flowcontrol.parallelism.query", 10)))
 
 
-# ---------- Dependency: Registry Core (Singleton) ----------
-@lru_cache(maxsize=1)
-def get_registry() -> RegistryCore:
-    """
-    Return a singleton instance of RegistryCore.
-    The @lru_cache ensures the same instance is reused across requests,
-    avoiding repeated loading of the persistence file.
-    """
-    return RegistryCore(persistence_file=PERSISTENCE_FILE)
-
-
 # ---------- Middleware ----------
 @app.middleware("http")
 async def security_middleware(request: Request, call_next):
@@ -198,7 +190,7 @@ def _check_agent_limit(registry: RegistryCore, client_ip: str, details: dict) ->
     """检查注册数量是否超过上限，若超过则记录审计日志并抛出异常。"""
     if len(registry.get_agents()) >= int(config.get('agent.num.max', 40)):
         details["message"] = "Agent registration limit exceeded."
-        audit_logger.audit({
+        audit_handle.handle({
             "operation_name": OperationName.REGISTER_AGENT,
             "level": LogLevel.MINOR,
             "result": OperationResult.FAILURE,
@@ -217,7 +209,7 @@ def _check_duplicate_agent(agent: ValidatedAgentCard, registry: RegistryCore, cl
     key = _make_agent_key(agent.name, agent.provider.organization)
     if key in registry.get_agents():
         details["message"] = "Registration skipped: duplicate agent."
-        audit_logger.audit({
+        audit_handle.handle({
             "operation_name": OperationName.REGISTER_AGENT,
             "level": LogLevel.MINOR,
             "result": OperationResult.FAILURE,
@@ -239,8 +231,9 @@ async def _perform_registration(
 ) -> bool:
     """执行实际的注册操作，处理可能的 ValueError 和其他异常，并记录对应日志。"""
     try:
-        success = await registry.register(agent)
-        audit_logger.audit({
+        save_handle = HandlerRegistry.get_handler(InterfaceType.INSERT)
+        success = await save_handle.handle(agent)
+        audit_handle.handle({
             "operation_name": OperationName.REGISTER_AGENT,
             "level": LogLevel.MINOR,
             "result": OperationResult.SUCCESS,
@@ -251,7 +244,7 @@ async def _perform_registration(
         return success
     except ValueError as e:
         details["message"] = str(e)
-        audit_logger.audit({
+        audit_handle.handle({
             "operation_name": OperationName.REGISTER_AGENT,
             "level": LogLevel.MINOR,
             "result": OperationResult.FAILURE,
@@ -263,7 +256,7 @@ async def _perform_registration(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
         ) from e
     except Exception as e:
-        audit_logger.audit({
+        audit_handle.handle({
             "operation_name": OperationName.REGISTER_AGENT,
             "level": LogLevel.MINOR,
             "result": OperationResult.FAILURE,
@@ -301,6 +294,8 @@ async def register_agent(
         "organization": agent.provider.organization,
         "url": agent.provider.url,
     }
+    authenticate_handle = HandlerRegistry.get_handler(InterfaceType.AUTHENTICATE)
+    authenticate_handle.handle(client_ip, request)
     acquired = False
     try:
         register_semaphore.acquire_nowait()
@@ -325,6 +320,7 @@ async def register_agent(
     summary="Exact search",
 )
 async def list_agents_exact(
+        request: Request,
         name: Optional[str] = Query(None, description="Exact agent name"),
         organization: Optional[str] = Query(None, description="Exact organization"),
         registry: RegistryCore = Depends(get_registry), _: Any = Depends(RateLimiter('query')),
@@ -333,12 +329,16 @@ async def list_agents_exact(
     Search agents by exact fields (AND combination).
     All parameters are optional. If none provided, returns all agents.
     """
+    client_ip = request.client.host
+    authenticate_handle = HandlerRegistry.get_handler(InterfaceType.AUTHENTICATE)
+    authenticate_handle.handle(client_ip, request)
     acquired = False
     try:
         query_semaphore.acquire_nowait()
         acquired = True
         try:
-            agents = registry.find_exact(name=name, organization=organization)
+            query_handle = HandlerRegistry.get_handler(InterfaceType.QUERY)
+            agents = query_handle.handle(name, organization)
             return agents
         except Exception as e:
             logger.error(f"Error in exact search: {e}")

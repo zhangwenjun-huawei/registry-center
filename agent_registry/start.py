@@ -8,11 +8,14 @@ from uvicorn import config
 
 from agent_registry.server import app
 from common.cert.cert_validater import CertValidator
-from common.log.audit_logger import audit_logger, LogLevel, OperationResult, OperatorObject, OperationName
+from common.custom.custom_handle import HandlerRegistry
+from common.custom.interface_type import InterfaceType
+from common.log.audit_logger import LogLevel, OperationResult, OperatorObject, OperationName
 from common.util.cipher_util import DEFAULT_ENCODING
 from common.util.conf_util import conf_singleton_obj, load_cert_password, set_ssl_folder_permissions
 from common.util.config_util import get_conf
 
+audit_handle = HandlerRegistry.get_handler(InterfaceType.AUDIT)
 
 def get_user_info_from_env():
     """从环境变量获取用户信息"""
@@ -26,10 +29,10 @@ def get_user_info_from_env():
 
 def record_startup_log():
     server_config = get_conf()
-    audit_logger.audit({
+    audit_handle.handle({
         "operation_name": OperationName.START_SERVICE,
         "level": LogLevel.DANGER,
-        "result": OperationResult.FAILURE,
+        "result": OperationResult.SUCCESS,
         "object_name": OperatorObject.SERVICE,
         "details": {"ip": server_config.get("ip", ""), "port": server_config.get("port", "")},
         "user_name": get_user_info_from_env().get('username')
@@ -112,11 +115,11 @@ def main():
         server = CustomUvicornServer(server_config, conf_obj)
         server.run()
     except Exception as e:
-        audit_logger.audit({
+        audit_handle.handle({
+            "object_name": OperatorObject.SERVICE,
             "operation_name": OperationName.START_SERVICE,
             "level": LogLevel.DANGER,
             "result": OperationResult.FAILURE,
-            "object_name": OperatorObject.SERVICE,
             "details": {"ip": server_config.get("ip", ""), "port": server_config.get("port", "")},
             "user_name": get_user_info_from_env().get('username')
         })
