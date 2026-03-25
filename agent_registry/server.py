@@ -202,7 +202,7 @@ def _check_agent_limit(registry: RegistryCore, client_ip: str, details: dict) ->
             "client_ip": client_ip
         })
         raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            status_code=status.HTTP_409_CONFLICT,
             detail="Agent registration limit exceeded.",
         )
 
