@@ -9,6 +9,7 @@ and persistence using a JSON file.
 
 import asyncio
 from functools import partial
+from http import HTTPStatus
 from typing import List, Optional, Tuple, Any
 
 import anyio
@@ -100,10 +101,6 @@ class RateLimiter:
     async def __call__(self, request: Request):
         # Determine client identifier: prefer X-Forwarded-For, fallback to direct IP.
         identifier = request.client.host
-        forwarded = request.headers.get("X-Forwarded-For")
-        if forwarded:
-            identifier = forwarded.split(",")[0].strip()
-
         # Check rate limit; if exceeded, raise 429.
         if not await async_hit(self.rate_item, identifier):
             raise HTTPException(
@@ -123,7 +120,7 @@ class SizeValidator:
         body = await request.body()
         if len(body) > self.max_size:
             raise HTTPException(
-                status_code=413,
+                status_code=HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
                 detail=f"Request body is too large, maximum allowed {self.max_size // 1024}KB"
             )
         return request
