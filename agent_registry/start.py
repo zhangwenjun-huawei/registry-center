@@ -8,7 +8,7 @@ from loguru import logger
 from uvicorn import config
 
 from agent_registry.cipher_converter import CipherConverter
-from agent_registry.config import CONN_TIMEOUT, TLS_CIPHER
+from agent_registry.config import CONN_TIMEOUT, TLS_CIPHER, FORWARDED_ALLOW_IPS
 from agent_registry.server import app
 from common.cert.cert_validater import CertValidator
 from common.custom.custom_handle import HandlerRegistry
@@ -78,7 +78,6 @@ def my_create_ssl_context(
 # 由于原版config不支持加载crl，因此扩展crl支持
 config.create_ssl_context = my_create_ssl_context
 
-
 class CustomUvicornServer:
     """Customized Uvicorn server, which is used to add additional security configurations."""
 
@@ -87,6 +86,7 @@ class CustomUvicornServer:
         self.conf_obj = conf_obj
 
     def run(self):
+        os.environ.setdefault(FORWARDED_ALLOW_IPS, self.server_config.get(FORWARDED_ALLOW_IPS))
         server_config = uvicorn.Config(
             app=app,
             host=self.server_config.get("ip", "127.0.0.1"),
@@ -104,6 +104,7 @@ class CustomUvicornServer:
             timeout_keep_alive=0,
             timeout_graceful_shutdown=int(self.server_config.get(CONN_TIMEOUT, 30)),
             log_level="info",
+            proxy_headers=True
         )
         server = uvicorn.Server(server_config)
         server.run()

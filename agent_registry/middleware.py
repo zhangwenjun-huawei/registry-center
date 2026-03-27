@@ -34,9 +34,9 @@ class ConnectionLimitMiddleware(BaseHTTPMiddleware):
             return response
         except Exception as e:
             return JSONResponse(
-                status_code=500,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 content={
-                    "code": 500,
+                    "code": status.HTTP_500_INTERNAL_SERVER_ERROR,
                     "message": "Internal Server Error"
                 }
             )
