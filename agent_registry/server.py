@@ -110,22 +110,6 @@ class RateLimiter:
         return True
 
 
-class SizeValidator:
-    """大小验证器"""
-
-    def __init__(self, max_size: int = 500 * 1024):
-        self.max_size = max_size
-
-    async def __call__(self, request: Request):
-        body = await request.body()
-        if len(body) > self.max_size:
-            raise HTTPException(
-                status_code=HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
-                detail=f"Request body is too large, maximum allowed {self.max_size // 1024}KB"
-            )
-        return request
-
-
 # ---------- FastAPI Application ----------
 app = FastAPI(
     title="Agent Registry Service",
@@ -160,10 +144,17 @@ async def security_middleware(request: Request, call_next):
     - Limit request body size for POST/PUT.
     - Limit total URL length.
     """
+    # URL length check (full URL including scheme and host)
+    # Using str(request.url) gives the complete URL string.
+    if len(str(request.url)) > MAX_URL_LENGTH:
+        return Response(
+            content="URI Too Long",
+            status_code=status.HTTP_414_URI_TOO_LONG,
+        )
     # Body size check for write methods
     if request.method in ("POST", "PUT"):
         total_size = 0
-        body_chunks = []  # Only store if we need to preserve the body
+        body_chunks = []
 
         try:
             # Stream body in chunks
@@ -173,7 +164,7 @@ async def security_middleware(request: Request, call_next):
                 # Early exit if size exceeds limit
                 if total_size > MAX_REQUEST_BODY_SIZE:
                     return Response(
-                        content="Payload Too Large",
+                        content=f"Request body is too large, maximum allowed {MAX_REQUEST_BODY_SIZE // 1024} KB",
                         status_code=status.HTTP_413_CONTENT_TOO_LARGE,
                     )
 
@@ -184,14 +175,6 @@ async def security_middleware(request: Request, call_next):
                 content="Bad Request",
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
-
-    # URL length check (full URL including scheme and host)
-    # Using str(request.url) gives the complete URL string.
-    if len(str(request.url)) > MAX_URL_LENGTH:
-        return Response(
-            content="URI Too Long",
-            status_code=status.HTTP_414_URI_TOO_LONG,
-        )
 
     return await call_next(request)
 
@@ -291,7 +274,7 @@ async def _perform_registration(
 )
 async def register_agent(
         agent: ValidatedAgentCard,
-        request: Request = Depends(SizeValidator(max_size=500 * 1024)),
+        request: Request,
         _: Any = Depends(RateLimiter('register')),
         registry: RegistryCore = Depends(get_registry),
 ):
