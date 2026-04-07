@@ -33,7 +33,7 @@ class RegistryCore:
         """Create a normalized key for indexing."""
         return name.strip(), organization.strip()
 
-    # ---------- Public API -----------
+    # ---------- Public API ----------
     async def register(self, agent: AgentCard) -> bool:
         """
         Register a new agent. Returns True if successful, False if duplicate.
@@ -65,7 +65,7 @@ class RegistryCore:
     def get_agents(self):
         return self._agents
 
-    # ---------- Private API -----------
+    # ---------- Public helpers ----------
     def _save(self) -> None:
         """Persist current agents to file."""
         data = [agent.model_dump() for agent in self._agents.values()]

@@ -26,7 +26,7 @@ def save_to_file(file_path: str, agents: List[Dict[str, Any]]) -> None:
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(json_str)
 
-        # 设置文件权限为 600 （所有者读写）
+        # 设置文件权限为 600（所有者读写）
         os.chmod(file_path, 0o600)
 
         logger.info(f"Saved {len(agents)} agents to {file_path} ({data_size} bytes)")

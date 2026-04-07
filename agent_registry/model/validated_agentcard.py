@@ -81,7 +81,7 @@ class ValidatedAgentCard(AgentCard):
     def validate_skills(cls, skills: list[AgentSkill]) -> list[AgentSkill]:
         if len(skills) > MAX_NUMBER_OF_SKILLS:
             raise ValueError(
-                f'The agent can contain a maximum of {MAX_NUMBER_OF_SKILLS} skills.')
+                f'The agent can contain a maximum of {MAX_NUMBER_OF_SKILLS} skills')
         for skill in skills:
             skill_json = skill.model_dump_json()
             if len(skill_json) > SKILL_MAX_LENGTH:
@@ -118,7 +118,7 @@ class ValidatedAgentCard(AgentCard):
 
         # 3. 长度限制
         if len(org) > ORGNIZATION_MAX_LENGTH:
-            raise ValueError(f'The agent organization can contain a maximum of {VERSION_MAX_LENGTH} characters.')
+            raise ValueError(f'The agent organization can contain a maximum of {ORGNIZATION_MAX_LENGTH} characters.')
 
         # 4. 高危字符检查
         if _DANGEROUS_CHARS.search(org):
@@ -133,6 +133,6 @@ class ValidatedAgentCard(AgentCard):
             try:
                 HttpUrl(url)
             except Exception as e:
-                raise ValueError("Provide URL must be a valid web URL.") from e
+                raise ValueError('Provide URL must be a valid web URL.') from e
 
         return self

@@ -48,7 +48,7 @@ class CipherConverter:
                 converted = cls._auto_convert(cipher)
                 if converted:
                     openssl_ciphers.append(converted)
-                    logger.info(f"警告: 自动转换{cipher} -> {converted}")
+                    logger.info(f"警告: 自动转换 {cipher} -> {converted}")
                 else:
                     logger.info(f"警告: 跳过无法识别的密码套件: {cipher}")
 

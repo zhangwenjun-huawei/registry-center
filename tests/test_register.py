@@ -83,7 +83,7 @@ def test_register_agent_missing_required_field(client, mock_registry, valid_agen
     # 尝试注册缺少字段的 Agent
     response = client.post("/rest/a2a-t/v1/agent-register", json=invalid_data)
 
-    # 验证返回状态码为422（请求无效）
+    # 验证返回状态码为 422（请求无效）
     assert response.status_code == 422
 
     # 验证错误信息中包含缺失字段
