@@ -1,3 +1,3 @@
 
-class CertParserException(Exception):
+class CertParseException(Exception):
     pass

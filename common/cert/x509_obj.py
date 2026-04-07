@@ -18,8 +18,8 @@ class CertObj:
         obj.valid_from = cert_dict.get('valid_from', '')
         obj.valid_to = cert_dict.get('valid_to', '')
         obj.version = cert_dict.get('version', '')
-        obj.public_key = cert_dict.get('public_key', '')
-        obj.org_cert = cert_dict.get('org_cert', '')
+        obj.public_key = cert_dict.get('public_key', None)
+        obj.org_cert = cert_dict.get('org_cert', None)
         return obj
 
 class X509Obj:

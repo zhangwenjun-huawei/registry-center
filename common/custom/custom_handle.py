@@ -9,7 +9,7 @@ from common.util.cipher_util import decrypt
 
 
 class BaseHandler(ABC):
-    """🙆‍♀️的抽象类，所有接口实现必须继承此类并实现handle方法"""
+    """统一的抽象基类，所有接口实现必须继承此类并实现handle方法"""
 
     @abstractmethod
     async def handle(self, *args, **kwargs):
@@ -45,9 +45,8 @@ class HandlerRegistry:
     def register(cls, interface_type: InterfaceType, handler_class: Type[BaseHandler]) -> None:
         """
         注册用户自定义实现类
-        Args:
-            interface_type: 接口类型标识
-            handler_class: 继承自BaseHandler的实现类
+            :param interface_type: 接口类型标识，例如"decrypt", "audit", "authenticate", "insert", "query"
+            :param handler_class: 继承自BaseHandler 的自定义类
         """
         if not issubclass(handler_class, BaseHandler):
             raise TypeError("handler_class must be a subclass of BaseHandler")
@@ -57,17 +56,19 @@ class HandlerRegistry:
     def get_handler(cls, interface_type: InterfaceType) -> BaseHandler:
         """
         根据接口类型获取处理器实例
-        Args:
-            interface_type: 接口类型标识
-        Returns:
-            BaseHandler实例
+            ：param interface_type: 接口类型标识
+            :return: BaseHandler实例（用户自定义或默认）
         """
+        # 若存在用户注册的类，则实例化并返回
+        if interface_type.value in cls._registry:
+            return cls._registry[interface_type.value]()
+        # 否则返回对应的默认实现
         default_map = {
             "decrypt": DecryptHandler,
             "audit": AuditHandler,
             "authenticate": AuthenticateHandler,
             "insert": InsertHandler,
-            "query": QueryHandler
+            "query": QueryHandler,
         }
         handler_class = default_map.get(interface_type.value)
         if handler_class is None:

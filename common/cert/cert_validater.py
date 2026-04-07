@@ -1,15 +1,10 @@
 import datetime
-import os.path
+import os
 import re
 from abc import ABC, abstractmethod
-from idlelib.debugger_r import restart_subprocess_debugger
 from pathlib import Path
-from time import sleep
-
 from cryptography import x509
 from cryptography.hazmat.primitives.asymmetric import rsa, ec
-from google.api_core.retry import retry_target
-from typing_inspection.typing_objects import is_required
 
 from common.cert import cert_parser
 from common.cert.x509_obj import X509Obj
@@ -30,23 +25,26 @@ class PathValidator:
 
     def is_support_format(self, file_extension: str) -> bool:
         if self.suffix == "":
+            # 没后缀的不校验
             return True
         return self.suffix == file_extension.lower()
 
     def validate(self) -> ValidationResult:
         if self.cert_path is None or self.cert_path == '':
             if not self.is_required:
-                return ValidationResult(True, "Not config!")
-            return ValidationResult(False, f'Cert file path is empty! {self.conf_tip}')
+                return ValidationResult(True, "Not config! ")
+            return ValidationResult(False, f"Cert file path is empty! {self.conf_tip}")
+        # 到这里就是填了，填了就校验
         cert_path_obj = Path(self.cert_path)
         if not cert_path_obj.exists():
-            return ValidationResult(False, f'Cert file not exist: {self.cert_path}. {self.conf_tip}')
+            return ValidationResult(False, f"Cert file not exist：{self.cert_path}. {self.conf_tip}")
         file_extension = cert_path_obj.suffix.lower()
         if not self.is_support_format(file_extension):
-            return ValidationResult(False, f"Cert file extension is not support! {self.conf_tip}")
+            return ValidationResult(False, f"Cert file extension is not support!  {self.conf_tip}")
         return ValidationResult(True, "")
 
-class AbstractValidationLink(ABC):
+
+class AbstractValidatorLink(ABC):
     def __init__(self, conf_obj: ConfObj):
         self.conf_obj = conf_obj
         self.link = self.build_link()
@@ -60,19 +58,19 @@ class AbstractValidationLink(ABC):
             result = link.validate()
             if not result.is_valid:
                 return result
-        return ValidationResult(True, '')
+        return ValidationResult(True, "")
 
 
-class PathValidatorLink(AbstractValidationLink):
+class PathValidatorLink(AbstractValidatorLink):
 
     def build_link(self):
         conf_obj = self.conf_obj
         return [
-            PathValidatorLink(conf_obj.ssl_certfile, suffix=".cer", is_required=True, conf_tip="ssl_certfile"),
-            PathValidatorLink(conf_obj.ssl_keyfile, suffix=".pem", is_required=True, conf_tip="ssl_keyfile"),
-            PathValidatorLink(conf_obj.ssl_keyfile_password, suffix="", is_required=True, conf_tip="ssl_keyfile_password"),
-            PathValidatorLink(conf_obj.ssl_ca_certs, suffix=".cer", is_required=True, conf_tip="ssl_ca_certs"),
-            PathValidatorLink(conf_obj.ssl_crl_file, suffix=".crl", is_required=False, conf_tip="ssl_crl_file")
+            PathValidator(conf_obj.ssl_certfile, suffix=".cer", is_required=True, conf_tip="ssl_certfile"),
+            PathValidator(conf_obj.ssl_keyfile, suffix=".pem", is_required=True, conf_tip="ssl_keyfile"),
+            PathValidator(conf_obj.ssl_keyfile_password, suffix="", is_required=True, conf_tip="ssl_keyfile_password"),
+            PathValidator(conf_obj.ssl_ca_certs, suffix=".cer", is_required=True, conf_tip="ssl_ca_certs"),
+            PathValidator(conf_obj.ssl_crl_file, suffix=".crl", is_required=False, conf_tip="ssl_crl_file")
         ]
 
 class CommonContentValidator:
@@ -113,12 +111,15 @@ class CommonContentValidator:
                     return False
             except (ValueError, TypeError):
                 return False
+        # 每本证书的有效期都要校验对
         return True
 
     def validate(self) -> ValidationResult:
         pass
 
+
 class CerContentValidator(CommonContentValidator):
+
     def validate(self) -> ValidationResult:
         # 读取cert证书
         try:
@@ -128,23 +129,24 @@ class CerContentValidator(CommonContentValidator):
             # 校验X.509v3格式，校验公钥算法及长度，校验有效期
             for cert_obj in x509_obj.cert_list:
                 # 1. 证书格式校验：X.509v3
-                if cert_obj.verion != x509.Version.v3:
-                    return ValidationResult(False, f"Cerfificate format is not X.509v3. {self.conf_tip}")
-                # 2. 密钥算法、长度校验，cer只校验公钥，没有私钥
+                if cert_obj.version != x509.Version.v3:
+                    return ValidationResult(False, f"Certificate format is not X.509v3. {self.conf_tip}")
+                # 2. 密钥算法、长度校验，cer只校验公钥，因为没有私钥
                 if not self.validate_public_key_length(cert_obj.public_key):
                     return ValidationResult(False,
                                             f"Certificate key algorithm or length does not meet requirements"
-                                                   f"{self.conf_tip}")
-            # 3. 有效期校验，单独跑一遍，确保每本证书的有效期对比的currentTime是同一个
+                                            f"{self.conf_tip}")
+            # 3. 有效期校验，单独跑一把，确保每本证书的有效期对比的currentTime是同一个
             if not self.validate_certificate_validity(x509_obj):
                 return ValidationResult(False, f"Certificate is not valid at current time. {self.conf_tip}")
+
             return ValidationResult(True, f"CER certificate validation passed! {self.cert_path}")
         except Exception as e:
             return ValidationResult(False, f"{e} {self.conf_tip}")
 
 
 class PrivateKeyValidator(CommonContentValidator):
-    # 定义字符串类型
+    # 定义字符类型
     digit_pattern = re.compile(r'[0-9]')
     upper_pattern = re.compile(r'[A-Z]')
     lower_pattern = re.compile(r'[a-z]')
@@ -154,7 +156,7 @@ class PrivateKeyValidator(CommonContentValidator):
 
     min_length = 8
 
-    def __init__(self, cert_path: str, password_bytes: bytes = None, server_path = "", conf_tip = ""):
+    def __init__(self, cert_path: str, password_bytes: bytes = None, server_path="", conf_tip=""):
         super().__init__(cert_path=cert_path, conf_tip=conf_tip)
         self.password_bytes = password_bytes
         self.server_path = server_path
@@ -165,13 +167,15 @@ class PrivateKeyValidator(CommonContentValidator):
         :param plaintext: 待校验的密码明文
         :return: 如果密码符合复杂度要求，返回True；否则返回False
         """
-        # 至少8字符
+        # 至少8个字符
         if len(plaintext) < self.min_length:
             return False
-        # 计算密码中包含的字符串类型数量，要求至少为2
+        # 计算密码中包含的字符类型数量
         char_types = sum(bool(re.search(pattern, plaintext)) for pattern in self.patterns)
+        # 至少包含两种字符类型
         if char_types < 2:
             return False
+
         return True
 
     def validate(self) -> ValidationResult:
@@ -216,29 +220,34 @@ class CRLValidator(CommonContentValidator):
         try:
             if self.cert_path is None or self.cert_path == '':
                 # 非必填，没填就不校验
-                return ValidationResult(True, 'CRL not config!')
+                return ValidationResult(True, "CRL not config! ")
             cert_path_obj = Path(self.cert_path)
             if not cert_path_obj.exists():
-                return ValidationResult(False, f"CRL file not exist: {self.cert_path}. {self.conf_tip}")
+                return ValidationResult(False, f"CRL file not exist： {self.cert_path}. {self.conf_tip}")
+            # 读取CRL
             crl_list = cert_parser.parse_crl_list(self.cert_path)
             self.crl_list_data = crl_list
-            # 1. 校验CRL格式，有扩展的是V2，没有的是V1
+            # 1. 校验CRL格式:X.509v2，有扩展的是V2，没有的是V1
             is_v2 = len(crl_list.extensions) > 0
             if not is_v2:
                 return ValidationResult(False, f"CRL format is not X.509v2. {self.conf_tip}")
+            # 2. 校验有效期：当前时间有效
             if not self.validate_crl_validity(crl_list):
                 return ValidationResult(False, f"CRL is not valid at current time. {self.conf_tip}")
             return ValidationResult(True, f"CRL validation passed! {self.cert_path}")
         except Exception as e:
             return ValidationResult(False, f"{e} {self.conf_tip}")
 
-class CerContentValidatorLink(AbstractValidationLink):
+
+class CerContentValidatorLink(AbstractValidatorLink):
+
     def build_link(self):
         conf_obj = self.conf_obj
         return [
             CerContentValidator(conf_obj.ssl_certfile, conf_tip="ssl_certfile"),
             CerContentValidator(conf_obj.ssl_ca_certs, conf_tip="ssl_ca_certs")
         ]
+
 
 class CertValidator:
 
@@ -265,8 +274,14 @@ class CertValidator:
         """
         # 1. 基础校验，校验路径是否存在，文件名格式是否符合要求
         if not os.path.exists(CONFIG_FILE_PATH):
-            return ValidationResult(False, "Config file not exists! \"etc/conf/server.conf\" file and try again.")
+            return ValidationResult(False,
+                                    "Config file not exists! \"etc/conf/server.conf\" "
+                                    "file and try again.")
         result = PathValidatorLink(self.conf_obj).validate()
+        if not result.is_valid:
+            return result
+        # 2. 读取证书，校验X.509v3格式，校验公钥算法及长度，校验有效期
+        result = CerContentValidatorLink(self.conf_obj).validate()
         if not result.is_valid:
             return result
 
