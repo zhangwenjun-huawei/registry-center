@@ -16,6 +16,7 @@ class BaseHandler(ABC):
         """具体业务逻辑由子类实现"""
         pass
 
+
 # ==================== 默认实现 ====================
 class DecryptHandler(BaseHandler):
     async def handle(self, *args, **kwargs):
@@ -51,8 +52,8 @@ class HandlerRegistry:
     def register(cls, interface_type: InterfaceType, handler_class: Type[BaseHandler]) -> None:
         """
         注册用户自定义实现类
-        :param interface_type: 接口类型标识，例如"decrypt", "audit", "authenticate", "insert", "query"
-        :param handler_class: 继承自BaseHandler 的自定义类
+        :param interface_type: 接口类型标识，例如 "decrypt", "audit", "authenticate", "insert", "query"
+        :param handler_class: 继承自 BaseHandler 的自定义类
         """
         if not issubclass(handler_class, BaseHandler):
             raise TypeError("handler_class must be a subclass of BaseHandler")
@@ -63,7 +64,7 @@ class HandlerRegistry:
         """
         根据接口类型获取处理器实例
         :param interface_type: 接口类型标识
-        :return: BaseHandler实例（用户自定义或默认）
+        :return: BaseHandler 实例（用户自定义或默认）
         """
         # 若存在用户注册的类，则实例化并返回
         if interface_type.value in cls._registry:
