@@ -24,6 +24,7 @@ from agent_registry.config import (
     MAX_REQUEST_BODY_SIZE,
     MAX_URL_LENGTH, CONN_TIMEOUT, CONN_MAX, FLOW_CTL_PARALLEL_REGISTER, FLOW_CTL_PARALLEL_QUERY, FLOW_CTL_REGISTER,
     FLOW_CTL_QUERY, AGENT_NUM_MAX, FLOW_CTL_PARALLEL_UPDATE, FLOW_CTL_PARALLEL_GET, FLOW_CTL_PARALLEL_RETRIEVE,
+    FLOW_CTL_PARALLEL_DEREGISTER,
 )
 from agent_registry.core import RegistryCore
 from agent_registry.registry_instance import get_registry
@@ -137,6 +138,7 @@ query_semaphore = anyio.Semaphore(int(config.get(FLOW_CTL_PARALLEL_QUERY, 10)))
 update_semaphore = anyio.Semaphore(int(config.get(FLOW_CTL_PARALLEL_UPDATE, 10)))
 get_semaphore = anyio.Semaphore(int(config.get(FLOW_CTL_PARALLEL_GET, 10)))
 retrieve_semaphore = anyio.Semaphore(int(config.get(FLOW_CTL_PARALLEL_RETRIEVE, 10)))
+deregister_semaphore = anyio.Semaphore(int(config.get(FLOW_CTL_PARALLEL_DEREGISTER, 1)))
 
 
 # ---------- Middleware ----------
@@ -441,6 +443,7 @@ async def update_agent(
 
 @app.delete("/rest/a2a-t/v1/deregister_agent/{name}", response_model=bool, summary="Deregister an agent")
 async def deregister_agent(
+        request: Request,
         name: str = Path(..., description="Agent name"),
         organization: str = Query(..., description="Agent organization"),
         registry: RegistryCore = Depends(get_registry),
@@ -449,15 +452,33 @@ async def deregister_agent(
     Remove an agent from the registry.
     Returns True if deleted, False if not found.
     """
+    client_ip = request.client.host
+    authenticate_handle = HandlerRegistry.get_handler(InterfaceType.AUTHENTICATE)
+    await authenticate_handle.handle(client_ip, request)
+    acquired = False
     try:
+        deregister_semaphore.acquire_nowait()
+        acquired = True
+        try:
+            deregister_handle = HandlerRegistry.get_handler(InterfaceType.DEREGISTER)
+            agents = await deregister_handle.handle(name, organization)
+            return agents
+        except Exception as e:
+            logger.error(f"Error in exact search: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Internal server error",
+            ) from e
+
         success = registry.deregister(name, organization)
         if not success:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
         return success
-    except Exception as e:
-        logger.error(f"Unexpected error in deregister agent:{e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error") from e
-
+    except anyio.WouldBlock as e:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Server is busy") from e
+    finally:
+        if acquired:
+            deregister_semaphore.release()
 
 @app.get("/rest/a2a-t/v1/agents/retrieve", response_model=List[AgentCard], summary="Fuzzy retrieve by task")
 async def retrieve_agents_by_task(
@@ -494,7 +515,7 @@ async def retrieve_agents_by_task(
             retrieve_semaphore.release()
 
 
-@app.get("/rest/a2a-t/v1/agents/{name}", response_model=AgentCard, summary="Get agent by exact name and organization")
+@app.get("/rest/a2a-t/v1/agents/{name}", response_model=AgentCard | None, summary="Get agent by exact name and organization")
 async def get_agent(
         request: Request,
         name: str,

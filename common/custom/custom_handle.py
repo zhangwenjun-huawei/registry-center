@@ -55,6 +55,10 @@ class RetrieveHandler(BaseHandler):
     async def handle(self, *args, **kwargs):
         return get_registry().retrieve_by_task(*args)
 
+class DeregisterHandler(BaseHandler):
+    async def handle(self, *args, **kwargs):
+        return get_registry().deregister(*args)
+
 # ==================== 注册表 ====================
 class HandlerRegistry:
     _registry: Dict[str, Type[BaseHandler]] = {}
@@ -91,6 +95,7 @@ class HandlerRegistry:
             "update": UpdateHandler,
             "get": GetHandler,
             "retrieve": RetrieveHandler,
+            "deregister": DeregisterHandler,
         }
         handler_class = default_map.get(interface_type.value)
         if handler_class is None:

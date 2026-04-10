@@ -11,3 +11,4 @@ class InterfaceType(Enum):
     UPDATE = "update"
     GET = "get"
     RETRIEVE = "retrieve"
+    DEREGISTER = "deregister"
