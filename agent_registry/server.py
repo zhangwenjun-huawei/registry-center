@@ -24,15 +24,15 @@ and persistence using a JSON file.
 
 import asyncio
 from functools import partial
-from typing import List, Optional, Tuple, Any
+from typing import Optional, Tuple, Any
 
 import anyio
 from a2a.types import AgentCard
-from fastapi import FastAPI, HTTPException, Query, Request, Depends, status, Path, Body
+from fastapi import FastAPI, HTTPException, Query, Request, Depends, status, Path
 from fastapi.responses import JSONResponse
+from google.protobuf.json_format import Parse, MessageToDict
 from loguru import logger
 from limits import strategies, storage, parse_many
-from openai import organization
 from starlette.responses import Response
 
 from agent_registry.config import (
@@ -42,9 +42,9 @@ from agent_registry.config import (
     FLOW_CTL_PARALLEL_DEREGISTER, FLOW_CTL_UPDATE, FLOW_CTL_GET, FLOW_CTL_RETRIEVE, FLOW_CTL_DEREGISTER,
 )
 from agent_registry.core import RegistryCore
+from agent_registry.model.validated_agentcard import validate_agent_card
 from agent_registry.registry_instance import get_registry
 from agent_registry.middleware import ConnectionLimitMiddleware, TimeoutMiddleware
-from agent_registry.model.validated_agentcard import ValidatedAgentCard
 from common.custom.custom_handle import HandlerRegistry
 from common.custom.interface_type import InterfaceType
 from common.log.audit_logger import OperationResult, LogLevel, OperatorObject, OperationName
@@ -222,7 +222,7 @@ async def _check_agent_limit(registry: RegistryCore, client_ip: str, details: di
         )
 
 
-async def _check_duplicate_agent(agent: ValidatedAgentCard, registry: RegistryCore, client_ip: str,
+async def _check_duplicate_agent(agent: AgentCard, registry: RegistryCore, client_ip: str,
                                  details: dict) -> None:
     """检查是否已存在相同 (name, organization) 的 agent，若存在则记录并抛出异常。"""
     key = _make_agent_key(agent.name, agent.provider.organization)
@@ -243,7 +243,7 @@ async def _check_duplicate_agent(agent: ValidatedAgentCard, registry: RegistryCo
 
 
 async def _perform_registration(
-        agent: ValidatedAgentCard,
+        agent: AgentCard,
         client_ip: str,
         details: dict,
 ) -> bool:
@@ -343,7 +343,6 @@ async def _perform_update(
     status_code=status.HTTP_201_CREATED,
 )
 async def register_agent(
-        agent: ValidatedAgentCard,
         request: Request,
         _: Any = Depends(RateLimiter('register')),
         registry: RegistryCore = Depends(get_registry),
@@ -353,6 +352,8 @@ async def register_agent(
     The combination (name, provider.organization) must be unique.
     Returns True if registered, False if duplicate.
     """
+    body = await request.body()
+    agent = Parse(body, AgentCard())
     client_ip = request.client.host
     details = {
         "agentName": agent.name,
@@ -367,6 +368,7 @@ async def register_agent(
         acquired = True
         await _check_agent_limit(registry, client_ip, details)
         await _check_duplicate_agent(agent, registry, client_ip, details)
+        validate_agent_card(agent)
         result = await _perform_registration(agent, client_ip, details)
         return JSONResponse(
             content=result,
@@ -381,7 +383,7 @@ async def register_agent(
 
 @app.get(
     "/rest/a2a-t/v1/agents/query",
-    response_model=List[AgentCard],
+    response_model=None,
     summary="Exact search",
 )
 async def list_agents_exact(
@@ -404,7 +406,7 @@ async def list_agents_exact(
         try:
             query_handle = HandlerRegistry.get_handler(InterfaceType.QUERY)
             agents = await query_handle.handle(name, organization)
-            return agents
+            return [MessageToDict(card, preserving_proto_field_name=True) for card in agents]
         except Exception as e:
             logger.error(f"Error in exact search: {e}")
             raise HTTPException(
@@ -423,13 +425,14 @@ async def update_agent(
         request: Request,
         name: str,
         organization: str,
-        agent_data: ValidatedAgentCard,
         registry: RegistryCore = Depends(get_registry),  _: Any = Depends(RateLimiter('update'))
 ):
     """
     Fully replace an existing agent. The name and organization in the body must match the path/query.
     Returns True if updated, False if not found.
     """
+    body = await request.body()
+    agent_data = Parse(body, AgentCard())
     client_ip = request.client.host
     details = {
         "agentName": agent_data.name,
@@ -443,11 +446,11 @@ async def update_agent(
         # Convert to dict for update
         update_semaphore.acquire_nowait()
         acquired = True
-
+        validate_agent_card(agent_data)
         await _check_agent_limit(registry, client_ip, details)
 
-        data = agent_data.model_dump()
-        success = await _perform_update(client_ip,name, organization, data,details)
+        data = MessageToDict(agent_data, preserving_proto_field_name=True)
+        success = await _perform_update(client_ip, name, organization, data, details)
         if not success:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
         return success
@@ -499,7 +502,7 @@ async def deregister_agent(
         if acquired:
             deregister_semaphore.release()
 
-@app.get("/rest/a2a-t/v1/agents/retrieve", response_model=List[AgentCard], summary="Fuzzy retrieve by task")
+@app.get("/rest/a2a-t/v1/agents/retrieve", response_model=None, summary="Fuzzy retrieve by task")
 async def retrieve_agents_by_task(
         request: Request,
         task: str = Query(..., description="Natural language task description"),
@@ -522,7 +525,7 @@ async def retrieve_agents_by_task(
         try:
             retrieve_handle = HandlerRegistry.get_handler(InterfaceType.RETRIEVE)
             agents = await retrieve_handle.handle(task,top_n)
-            return agents
+            return [MessageToDict(agent) for agent in agents]
         except Exception as e:
             logger.error(f"Error in exact search: {e}")
             raise HTTPException(
@@ -536,7 +539,7 @@ async def retrieve_agents_by_task(
             retrieve_semaphore.release()
 
 
-@app.get("/rest/a2a-t/v1/agents/{name}", response_model=AgentCard | None, summary="Get agent by exact name and organization")
+@app.get("/rest/a2a-t/v1/agents/{name}", response_model=None, summary="Get agent by exact name and organization")
 async def get_agent(
         request: Request,
         name: str,
@@ -554,8 +557,8 @@ async def get_agent(
         acquired = True
         try:
             get_handle = HandlerRegistry.get_handler(InterfaceType.GET)
-            agents = await get_handle.handle(name, organization)
-            return agents
+            agent = await get_handle.handle(name, organization)
+            return MessageToDict(agent, preserving_proto_field_name=True) if agent is not None else None
         except Exception as e:
             logger.error(f"Error in exact search: {e}")
             raise HTTPException(
