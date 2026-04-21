@@ -30,7 +30,7 @@ class BaseLLM(ABC):
         self.model = llm_config.config_item.model
         self.base_url = llm_config.config_item.api
         self.api_key = llm_config.config_item.apikey,
-        self.enable_thinking =  llm_config.config_item.enable_thinking
+        self.enable_thinking = llm_config.config_item.enable_thinking
 
     def ask_llm(self, prompt) -> Union[str, Tuple[str, str]]:
         start_time = time.time()
