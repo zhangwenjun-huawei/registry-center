@@ -29,8 +29,8 @@
 
 - 通过UDS(Unix Domain Socket)实现内部交互能力
 - 统一的socket入口，支持多种内部操作
-- 通过action字段区分不同操作类型
-- 当前支持操作：审核(audit)、后续可扩展更多操作
+- 通过target字段区分不同操作类型
+- 当前支持操作：审核(approval)、后续可扩展更多操作
 
 ### 1.3 设计原则
 
@@ -397,7 +397,7 @@ async def list_agents(name: Optional[str] = None, organization: Optional[str] = 
 │                  │
 │ 发送请求：         │
 │ {                │
-│  "target":"audit",│ ← target字段区分操作
+│  "target":"approval",│ ← target字段区分操作
 │  "agent_name":"X",│
 │  "organization":"Y"│
 │ }                │
@@ -426,7 +426,7 @@ RuntimeDirectory=registry-center
 
 ```json
 {
-  "target": "audit",        // 操作类型
+  "target": "approval",        // 操作类型
   "agent_name": "TestAgent", // Agent名称
   "organization": "TestOrg"  // 组织名称
 }
@@ -437,7 +437,7 @@ RuntimeDirectory=registry-center
 ```json
 {
   "success": true,
-  "message": "Agent audit successful",
+  "message": "Agent approval successful",
   "agent": {
     "name": "TestAgent",
     "organization": "TestOrg",
@@ -450,7 +450,7 @@ RuntimeDirectory=registry-center
 
 | target | 说明 | 参数 |
 |--------|------|------|
-| `audit` | 审核Agent | agent_name, organization |
+| `approval` | 审核Agent | agent_name, organization |
 | `config` | 配置管理 | config_key, config_value |
 | `stats` | 统计查询 | type |
 | `query` | Agent查询 | agent_name, organization |
@@ -504,7 +504,7 @@ agent_registry/
 │   ├── handlers/                 # 操作处理器
 │   │   ├── __init__.py
 │   │   ├── base_handler.py       # Handler基类
-│   │   ├── audit_handler.py      # 审核处理器
+│   │   ├── approval_handler.py      # 审核处理器
 │   │   ├── config_handler.py     # 配置处理器
 │   │   ├── stats_handler.py      # 统计处理器
 │   │   ├── query_handler.py      # 查询处理器
@@ -623,10 +623,10 @@ class RegistryClient:
         client_socket.close()
         return result
     
-    def audit_agent(self, agent_name: str, organization: str) -> dict:
+    def approval_agent(self, agent_name: str, organization: str) -> dict:
         """审核Agent"""
         request = {
-            "target": "audit",
+            "target": "approval",
             "agent_name": agent_name,
             "organization": organization
         }
@@ -685,7 +685,7 @@ srw-rw---- 1 root registry_group 0 Jan 1 12:00 /run/registry-center/internal.soc
 ```
 ┌─────────────────────────────────┐
 │  客户端调用内部交互接口           │
-│  client.audit_agent("TestAgent", "TestOrg") │
+│  client.approval_agent("TestAgent", "TestOrg") │
 └──────────┬──────────────────────┘
            │
            ▼
@@ -713,7 +713,7 @@ srw-rw---- 1 root registry_group 0 Jan 1 12:00 /run/registry-center/internal.soc
       ▼
 ┌─────────────────────────────────┐
 │  发送请求                         │
-│  {"target":"audit", ...}         │
+│  {"target":"approval", ...}         │
 └──────────┬──────────────────────┘
            │
            ▼
@@ -724,7 +724,7 @@ srw-rw---- 1 root registry_group 0 Jan 1 12:00 /run/registry-center/internal.soc
            │
            ▼
 ┌─────────────────────────────────┐
-│  AuditHandler处理请求            │
+│  ApprovalHandler处理请求           │
 └──────────┬──────────────────────┘
            │
            ▼
@@ -811,7 +811,7 @@ agent_registry/
 │   ├── handlers/                 # 操作处理器
 │   │   ├── __init__.py
 │   │   ├── base_handler.py       # Handler基类
-│   │   ├── audit_handler.py      # 审核处理器
+│   │   ├── approval_handler.py      # 审核处理器
 │   │   ├── config_handler.py     # 配置处理器
 │   │   ├── stats_handler.py      # 统计处理器
 │   │   ├── query_handler.py      # 查询处理器
@@ -1088,7 +1088,7 @@ agent_approval_enabled=true
 **影响：**
 - 新注册的Agent状态为`registered`
 - 需要调用审核接口才能变为`published`
-- UDS内部交互服务启动并监听，可通过`audit` target审核Agent
+- UDS内部交互服务启动并监听，可通过`approval` target审核Agent
 
 #### 3.3.2 审核功能关闭时的配置
 
@@ -1100,7 +1100,7 @@ agent_approval_enabled=false
 **影响：**
 - 新注册的Agent直接为`published`状态
 - UDS内部交互服务仍然启动
-- 调用`audit` target会报错（审核功能关闭）
+- 调用`approval` target会报错（审核功能关闭）
 
 ### 3.4 数据持久化
 
@@ -1317,13 +1317,13 @@ def test_approval_uds_interface():
     client = RegistryClient()
     
     # 测试1：审核功能开启时调用
-    result = client.audit_agent("TestAgent", "TestOrg")
+    result = client.approval_agent("TestAgent", "TestOrg")
     assert result['success'] == True
     assert result['agent']['status'] == 'published'
     
     # 测试2：审核功能关闭时调用（应报错）
     # 修改配置：agent_approval_enabled=false
-    result = client.audit_agent("TestAgent", "TestOrg")
+    result = client.approval_agent("TestAgent", "TestOrg")
     assert result['success'] == False
     assert result['error'] == "Approval function is disabled"
 ```
@@ -1349,7 +1349,7 @@ def test_approval_uds_interface():
    {"success":true, "status":"registered", "message":"Agent registered, waiting for approval"}
    
    # 步骤3：调用审核接口
-   python -m agent_registry.internal.client.cli_registry audit TestAgent TestOrg
+   python -m agent_registry.internal.client.cli_registry approval TestAgent TestOrg
    
    # 预期响应：
    {"success":true, "status":"published", "message":"Agent approval successful"}
@@ -1375,7 +1375,7 @@ def test_approval_uds_interface():
    {"success":true, "status":"published", "message":"Agent registered and published"}
    
    # 步骤3：尝试调用审核接口（应报错）
-   python -m agent_registry.internal.client.cli_registry audit TestAgent TestOrg
+   python -m agent_registry.internal.client.cli_registry approval TestAgent TestOrg
    
    # 预期响应：
    {"success":false, "error":"Approval function is disabled"}
@@ -1420,7 +1420,7 @@ def test_approval_uds_interface():
    # 预期：报错，提示先发布已注册Agent
    
    # 步骤3：审核Agent1
-   python -m agent_registry.internal.client.cli_registry audit Agent1 Org
+   python -m agent_registry.internal.client.cli_registry approval Agent1 Org
    
    # 预期：status变为"published"
    
@@ -1437,14 +1437,14 @@ def test_approval_uds_interface():
 
 ```bash
 # 测试1：普通用户无法访问内部交互接口
-python -m agent_registry.internal.client.cli_registry audit TestAgent TestOrg
+python -m agent_registry.internal.client.cli_registry approval TestAgent TestOrg
 
 # 预期：
 Permission denied: You don't have permission to access registry center
 
 # 测试2：registry_group组成员可以访问
 sudo usermod -aG registry_group $USER
-python -m agent_registry.internal.client.cli_registry audit TestAgent TestOrg
+python -m agent_registry.internal.client.cli_registry approval TestAgent TestOrg
 
 # 预期：成功调用审核接口
 ```
@@ -1522,7 +1522,7 @@ registered_agents = registry.get_agents_by_status('registered')
 
 # 批量审核
 for agent in registered_agents:
-    result = client.audit_agent(agent.name, agent.provider.organization)
+    result = client.approval_agent(agent.name, agent.provider.organization)
     print(f"{agent.name}: {result['message']}")
 ```
 
@@ -1532,7 +1532,7 @@ for agent in registered_agents:
 
 ```python
 # 记录审核操作日志
-await audit_handle.handle({
+await approval_handle.handle({
     "operation_name": OperationName.APPROVAL_AGENT,
     "level": LogLevel.MINOR,
     "result": OperationResult.SUCCESS,
@@ -1581,9 +1581,9 @@ python -m agent_registry.internal.client.cli_registry stats all
    - Socket路径：`/run/registry-center/internal.sock`
    - 通过systemd的RuntimeDirectory配置运行目录
    - 统一入口，通过target字段区分操作类型
-   - 支持audit、config、stats、query等操作
+   - 支持approval、config、stats、query等操作
    - 文件权限实现访问控制（registry_group组）
-   - 审核关闭时audit target报错
+   - 审核关闭时approval target报错
 
 4. **持久化存储**
    - 支持文件存储和数据库存储两种模式
