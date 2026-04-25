@@ -306,7 +306,7 @@ async def _perform_update(
         update_handle = HandlerRegistry.get_handler(InterfaceType.UPDATE)
         success = await update_handle.handle(name, organization, data)
         await audit_handle.handle({
-            "operation_name": OperationName.REGISTER_AGENT,
+            "operation_name": OperationName.UPDATE_AGENT,
             "level": LogLevel.MINOR,
             "result": OperationResult.SUCCESS,
             "object_name": OperatorObject.AGENT,
@@ -317,7 +317,7 @@ async def _perform_update(
     except ValueError as e:
         details["message"] = str(e)
         await audit_handle.handle({
-            "operation_name": OperationName.REGISTER_AGENT,
+            "operation_name": OperationName.UPDATE_AGENT,
             "level": LogLevel.MINOR,
             "result": OperationResult.FAILURE,
             "object_name": OperatorObject.AGENT,
@@ -488,6 +488,10 @@ async def deregister_agent(
     authenticate_handle = HandlerRegistry.get_handler(InterfaceType.AUTHENTICATE)
     await authenticate_handle.handle(client_ip, request)
     acquired = False
+    details = {
+        "agentName": name,
+        "organization": organization,
+    }
     try:
         deregister_semaphore.acquire_nowait()
         acquired = True
@@ -495,7 +499,23 @@ async def deregister_agent(
             deregister_handle = HandlerRegistry.get_handler(InterfaceType.DEREGISTER)
             success = await deregister_handle.handle(name, organization)
             if not success:
+                await audit_handle.handle({
+                    "operation_name": OperationName.DEREGISTER_AGENT,
+                    "level": LogLevel.MINOR,
+                    "result": OperationResult.FAILURE,
+                    "object_name": OperatorObject.AGENT,
+                    "details": details,
+                    "client_ip": client_ip
+                })
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
+            await audit_handle.handle({
+                "operation_name": OperationName.DEREGISTER_AGENT,
+                "level": LogLevel.MINOR,
+                "result": OperationResult.FAILURE,
+                "object_name": OperatorObject.AGENT,
+                "details": details,
+                "client_ip": client_ip
+            })
             return success
         except Exception as e:
             logger.error(f"Error in exact search: {e}")

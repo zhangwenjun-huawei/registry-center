@@ -37,6 +37,8 @@ class LogLevel:
 class OperationName:
     START_SERVICE = "Start Service"
     REGISTER_AGENT = "Register Agent"
+    UPDATE_AGENT = "UPDATE Agent"
+    DEREGISTER_AGENT = "DEREGISTER Agent"
 
 
 class OperatorObject:
