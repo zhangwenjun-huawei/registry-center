@@ -15,7 +15,7 @@
 
 import json
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 
 import psycopg2
 from psycopg2 import pool
@@ -25,7 +25,6 @@ from loguru import logger
 
 from .base import StorageBackend
 from .sql_queries import PostgreSQLQueries
-
 
 class PostgreSQLStorage(StorageBackend):
     def __init__(self, pool: pool.ThreadedConnectionPool):
