@@ -30,24 +30,24 @@ from loguru import logger
 class UDSClient:
     """
     UDS Socket Client for CLI
-    
+
     Communicates with internal service via Unix Domain Socket.
     All CLI commands should use this client for internal operations.
     """
-    
+
     SOCKET_PATH = "run/registry-center/internal.sock"
-    
+
     def __init__(self, socket_path: str = None):
         self.socket_path = socket_path or self.SOCKET_PATH
-    
+
     def send_request(self, action: str, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         Send request to internal UDS service
-        
+
         Args:
             action: Action type (e.g., "approval")
             params: Request parameters
-            
+
         Returns:
             Response dict with success, error, message, data fields
         """
@@ -55,7 +55,7 @@ class UDSClient:
             "action": action,
             "params": params
         }
-        
+
         client_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
             client_socket.connect(self.socket_path)
@@ -77,13 +77,13 @@ class UDSClient:
                 "error": "Connection refused",
                 "message": "Internal service is not accepting connections"
             }
-        
+
         try:
             client_socket.send(json.dumps(request).encode('utf-8'))
-            
+
             response = client_socket.recv(4096)
             result = json.loads(response.decode('utf-8'))
-            
+
             return result
         except json.JSONDecodeError as e:
             logger.error(f"Invalid response from server: {e}")
@@ -101,7 +101,7 @@ class UDSClient:
             }
         finally:
             client_socket.close()
-    
+
     def approval_agent(self, agent_name: str, organization: str) -> Dict[str, Any]:
         """Approve registered agent"""
         return self.send_request("approval", {
