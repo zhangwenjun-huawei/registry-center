@@ -444,7 +444,7 @@ async def register_agent(
     body = await request.json()
     agent_cards = body.get("agentCards", [])
     client_ip = request.client.host
-    
+
     owner = None
     if OWNER_ISOLATION_ENABLED:
         owner = _get_owner_from_request(request)
@@ -557,11 +557,11 @@ async def update_agent(
     body_json = await request.json()
     agent_cards = body_json.get("agentCards", [])
     client_ip = request.client.host
-    
+
     owner = None
     if OWNER_ISOLATION_ENABLED:
         owner = await _verify_owner_permission(request, name, organization, registry)
-    
+
     authenticate_handle = HandlerRegistry.get_handler(InterfaceType.AUTHENTICATE)
     await authenticate_handle.handle(client_ip, request)
     acquired = False
@@ -609,11 +609,11 @@ async def deregister_agent(
     Returns True if deleted, False if not found.
     """
     client_ip = request.client.host
-    
+
     owner = None
     if OWNER_ISOLATION_ENABLED:
         owner = await _verify_owner_permission(request, name, organization, registry)
-    
+
     logger.info(f"Deregister agent request: name={name}, org={organization}, client={client_ip}, owner={owner}")
     authenticate_handle = HandlerRegistry.get_handler(InterfaceType.AUTHENTICATE)
     await authenticate_handle.handle(client_ip, request)
