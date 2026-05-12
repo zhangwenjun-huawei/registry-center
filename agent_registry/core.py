@@ -601,7 +601,7 @@ class RegistryCore:
             agent = self.storage.find_by_key(name, organization)
             if agent:
                 return getattr(agent, 'status', 'published')
-            return None
+            return ''
         else:
             key = self._make_key(name, organization)
             return self._status_map.get(key)
