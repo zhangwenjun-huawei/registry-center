@@ -77,12 +77,16 @@ class InitCommand:
             config['signature_validation_enabled'] = default_signature
             print(f"Signature validation set to default: {default_signature}")
 
+        print("\nConfigure JWK certificate for registry signature verification:")
+        jwk_config = self.config_jwk_cert()
+        config.update(jwk_config)
+
         default_approval = self.existing_config.get('agent_approval_enabled', 'false')
         current_approval = default_approval
         approval_input = input(
             f"Enable agent approval (y/n, default: {default_approval}): "
         ).strip().lower()
-        
+
         if approval_input == 'n':
             if current_approval == 'true':
                 from agent_registry.registry_instance import get_registry
@@ -91,7 +95,7 @@ class InitCommand:
                 for agent in registry.find_all():
                     if registry.get_status(agent.name, agent.provider.organization) == 'registered':
                         registered_agents.append(agent)
-                
+
                 if registered_agents:
                     print("Error: Approval function is enabled, cannot disable directly!")
                     print(f"Reason: There are {len(registered_agents)} agents in 'registered' status")
@@ -198,6 +202,33 @@ class InitCommand:
             config['sign_keyfile_password'] = self.save_password_file(password, sign_keyfile)
         else:
             config['sign_keyfile_password'] = self.existing_config.get('sign_keyfile_password', '')
+
+        return config
+
+    def config_jwk_cert(self) -> dict:
+        config = {}
+
+        default_jwk_cert_path = self.existing_config.get('JWK_CERT_PATH', '')
+        config['JWK_CERT_PATH'] = self.input_path(
+            "Enter JWK certificate path JWK_CERT_PATH",
+            default_jwk_cert_path,
+            ".cer"
+        )
+
+        default_jwk_private_key_path = self.existing_config.get('JWK_PRIVATE_KEY_PATH', '')
+        jwk_private_key_path, keyfile_changed = self.input_path(
+            "Enter JWK private key path JWK_PRIVATE_KEY_PATH",
+            default_jwk_private_key_path,
+            ".pem",
+            track_change=True
+        )
+        config['JWK_PRIVATE_KEY_PATH'] = jwk_private_key_path
+
+        if keyfile_changed:
+            password = self.input_password("Enter JWK private key password")
+            config['JWK_PRIVATE_KEY_PASSWORD'] = self.save_password_file(password, jwk_private_key_path)
+        else:
+            config['JWK_PRIVATE_KEY_PASSWORD'] = self.existing_config.get('JWK_PRIVATE_KEY_PASSWORD', '')
 
         return config
 

@@ -6,6 +6,9 @@ from cryptography.hazmat.backends import default_backend
 from cryptography import x509
 import json
 
+from a2a.types import AgentCardSignature
+from google.protobuf.json_format import MessageToDict
+
 
 class AgentCardSigner:
 
@@ -44,7 +47,7 @@ class AgentCardSigner:
             password = None
             if self.password_path:
                 with open(self.password_path, 'r') as f:
-                    password = f.read().strip()
+                    password = f.read().strip().encode('utf-8')
 
             self._private_key = serialization.load_pem_private_key(
                 private_key_data,
@@ -118,7 +121,7 @@ class AgentCardSigner:
             return agent_card
 
         try:
-            agent_card_dict = agent_card.model_dump() if hasattr(agent_card, 'model_dump') else agent_card
+            agent_card_dict = MessageToDict(agent_card, preserving_proto_field_name=True)
 
             canonical_card = self._canonicalize_agent_card(agent_card_dict)
             canonical_json = json.dumps(canonical_card, separators=(',', ':'), sort_keys=True)
@@ -128,24 +131,14 @@ class AgentCardSigner:
             kid = self.jku_url.split('/')[-1] if self.jku_url else "default_kid"
             jwk_header = self._create_jwk_header(kid)
 
-            signatures = getattr(agent_card, 'signatures', [])
-            if not isinstance(signatures, list):
-                signatures = []
+            new_sig = AgentCardSignature()
+            new_sig.protected = json.dumps(jwk_header, separators=(',', ':'))
+            new_sig.signature = signature
 
-            new_signature = {
-                "protected": jwk_header,
-                "signature": signature
-            }
+            agent_card.signatures.append(new_sig)
 
-            signatures.append(new_signature)
-
-            if hasattr(agent_card, 'model_copy'):
-                signed_card = agent_card.model_copy()
-                signed_card.signatures = signatures
-                return signed_card
-            else:
-                agent_card_dict['signatures'] = signatures
-                return agent_card_dict
+            logger.info(f"Agent card signed successfully, kid={kid}")
+            return agent_card
 
         except Exception as e:
             logger.warning(f"Failed to sign agent card: {e}. Returning original agent card.")
