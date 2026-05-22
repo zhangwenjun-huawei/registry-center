@@ -86,11 +86,15 @@ def get_registry_signer() -> Optional[AgentCardSigner]:
     """Get or create registry signer instance based on config"""
     global _registry_signer
     if _registry_signer is None:
-        sign_enabled = config.get('registry.sign.enabled', 'false').lower() == 'true'
+        sign_enabled_raw = config.get('registry.sign.enabled', 'false')
+        sign_enabled = sign_enabled_raw.lower() == 'true'
+        logger.info(f"[DEBUG] registry.sign.enabled raw value: '{sign_enabled_raw}', parsed: {sign_enabled}")
+        
         if sign_enabled:
             private_key_path = config.get('jwk_private_key_path', '')
             cert_path = config.get('jwk_cert_path', '')
             password_path = config.get('jwk_private_key_password', '')
+            logger.info(f"[DEBUG] private_key_path: '{private_key_path}', cert_path: '{cert_path}', password_path: '{password_path}'")
             
             if private_key_path and cert_path:
                 try:
@@ -109,6 +113,9 @@ def get_registry_signer() -> Optional[AgentCardSigner]:
                 _registry_signer = AgentCardSigner(sign_enabled=False)
         else:
             _registry_signer = AgentCardSigner(sign_enabled=False)
+    
+    if _registry_signer:
+        logger.info(f"[DEBUG] registry_signer.is_enabled(): {_registry_signer.is_enabled()}")
     return _registry_signer
 
 
@@ -540,8 +547,12 @@ async def register_agent(
 
             logger.info(f"Register agent success: name={agent.name}, org={agent.provider.organization}")
 
+            logger.info(f"[DEBUG] registry_signer exists: {registry_signer is not None}, is_enabled: {registry_signer.is_enabled() if registry_signer else False}")
+            logger.info(f"[DEBUG] agent signatures before sign: {len(agent.signatures)} items")
+
             if registry_signer and registry_signer.is_enabled():
                 agent = registry_signer.sign_agent_card(agent)
+                logger.info(f"[DEBUG] agent signatures after sign: {len(agent.signatures)} items")
                 logger.info(f"Registry signature added for agent: {agent.name}")
 
             approval_enabled = config.get('agent_approval_enabled', 'false')

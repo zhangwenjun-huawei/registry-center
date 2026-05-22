@@ -133,11 +133,13 @@ class AgentCardSigner:
             raise
 
     def sign_agent_card(self, agent_card: Any) -> Any:
+        logger.info(f"[DEBUG] sign_agent_card called, sign_enabled={self.sign_enabled}")
         if not self.sign_enabled:
             logger.debug("Signing is disabled, returning original agent card")
             return agent_card
 
         try:
+            logger.info(f"[DEBUG] sign_agent_card: kid={self._kid}")
             agent_card_dict = MessageToDict(agent_card, preserving_proto_field_name=True)
 
             canonical_card = self._canonicalize_agent_card(agent_card_dict)
@@ -152,8 +154,12 @@ class AgentCardSigner:
             new_sig.protected = json.dumps(jwk_header, separators=(',', ':'))
             new_sig.signature = signature
 
+            logger.info(f"[DEBUG] new_sig.protected: {new_sig.protected}")
+            logger.info(f"[DEBUG] new_sig.signature length: {len(new_sig.signature)}")
+
             agent_card.signatures.append(new_sig)
 
+            logger.info(f"[DEBUG] agent_card.signatures after append: {len(agent_card.signatures)}")
             logger.info(f"Agent card signed successfully, kid={kid}")
             return agent_card
 
