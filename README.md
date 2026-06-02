@@ -30,7 +30,7 @@ All Rights Reserved.
 5. ![photo](docs/zh/images/integrated_interactive_relationship.png)
 
 ## 设计约束
-1. 本项目需要运行在linux系统上，支持ipv4环境
+1. 本项目生产环境需要运行在Linux系统上，支持IPv4环境。Windows环境下可启动用于开发调试。
 2. 当前支持单实例部署，仅用于内部系统，不可开放到公网，不可作为云服务部署，否则目标系统需要同步提供防火墙、提供web服务器实现认证鉴权等安全能力。
 3. 向本项目注册的AgentCard不可含有个人数据例如电话号码，不可含有敏感信息例如密码、凭据，否则有信息泄露风险。
 
@@ -46,8 +46,8 @@ All Rights Reserved.
 本项目默认是在回环地址127.0.0.1：5000上开放端口侦听，接受restful请求，可按照实际需要，修改此ip、端口配置。
 配置文件：{安装目录}/etc/conf/server.conf
 默认配置如下，可按需修改：
-ip=127.0.0.1
-port=5000
+IP=127.0.0.1
+PORT=5000
 ### 证书配置
 目标系统需提供一套完整证书用于启动端口，后续接受REST请求时会建立TLS传输通道，并根据配置校验对端证书。
 配置文件：{安装目录}/etc/conf/server.conf
@@ -67,7 +67,7 @@ enable_https=true
 如果沒有证书或者不想校验证书，将enable_https字段设置为false即可
 
 配置文件：{安装目录}/etc/conf/persistence.conf
-persistence_mode=postgresql
+persistence.mode=file
 
 数据的保存目前有三种：postgresql、file和sqlite，如果设置为postgresql，则需要修改该文件中postgresql的相关配置，如果只是想简单使用，不想使用数据库保存数据，只需要将该字段修改为file即可，数据会保存在本地{安装目录}/data目录下。
 
@@ -104,7 +104,8 @@ revocationlist.crl:可选，吊销列表，仅支持pem编码格式，仅支持.
 本项目仅读取使用这些证书，不提供证书管理能力，例如证书过期告警、备份恢复等。
 
 ## 启动编排中心服务
-### windows启动方式
+### windows启动方式（仅限开发调试）
+> Windows启动会输出警告日志，因为内置服务使用TCP协议（127.0.0.1:1108）替代UDS，仅用于开发调试，生产环境请使用Linux。
 #### 1. 创建虚拟环境
 下载本项目代码后，使用pycharm打开，在pycharm中创建一个虚拟环境
 ![photo](docs/zh/images/create_virtual_environment.png)

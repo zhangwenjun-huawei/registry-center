@@ -28,6 +28,7 @@
 #### 需求3：内部交互服务
 
 - 通过UDS(Unix Domain Socket)实现内部交互能力
+- 实现扩展：Windows环境下通过TCP（127.0.0.1:1108）替代UDS，代码见 `agent_registry/internal/tcp_internal_service.py`
 - 统一的socket入口，支持多种内部操作
 - 通过action字段区分不同操作类型
 - 当前支持操作：审核(approval)、后续可扩展更多操作
