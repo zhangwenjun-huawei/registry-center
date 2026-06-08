@@ -1,0 +1,48 @@
+# GCP Cloud Build ignore file
+# Speeds up source upload by excluding unnecessary files
+
+.git/
+.gitignore
+.gitmodules
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+*.egg
+dist/
+build/
+.venv/
+venv/
+
+# Local runtime files
+/log/
+/run/
+/data/
+
+# Tests and docs (not needed in container)
+tests/
+design/
+docs/
+
+# Markdown files (except README)
+*.md
+!README.md
+
+# Environment
+.env
+.env.*
+
+# Misc
+wheelhouse/
+wheels/
+.gcloudignore
+Dockerfile.gcp

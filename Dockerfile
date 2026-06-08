@@ -1,25 +1,80 @@
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# All Rights Reserved.
+#
+#    Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    not use this file except in compliance with the License. You may obtain
+#    a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#    License for the specific language governing permissions and limitations
+#    under the License.
+
+# OpenAN Registry Center Container Image
+# Multi-stage build for OpenShift / Kubernetes deployment.
+#
+# Build:
+#   podman build -t registry-center:latest .
+#
+# Run (local):
+#   podman run -e DB_HOST=host -e DB_USERNAME=user -e DB_PASSWORD=pass \
+#     -p 8080:8080 registry-center:latest
+#
+# Init (container-native, non-interactive):
+#   podman run --rm -e DB_HOST=host -e DB_USERNAME=user -e DB_PASSWORD=pass \
+#     registry-center:latest init
+
+FROM python:3.10-slim AS builder
+
+USER root
+
+# Install build dependencies for packages that may need compilation
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libc6-dev \
+    libpq-dev \
+    libssl-dev \
+    libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt /tmp/requirements.txt
+
+RUN python3 -m venv /opt/venv --copies \
+    && . /opt/venv/bin/activate \
+    && pip install --no-cache-dir -r /tmp/requirements.txt \
+    && rm -rf /tmp/requirements.txt /root/.cache/pip
+
 FROM python:3.10-slim
 
-LABEL maintainer="OpenA2A-T"
-LABEL description="A2A-T AgentCard Registry Center"
+RUN apt-get update && apt-get install -y --no-install-recommends bash libpq5 && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /opt/venv /opt/venv
+
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    REGISTRY_IP=0.0.0.0 \
+    REGISTRY_PORT=8080 \
+    REGISTRY_ENABLE_HTTPS=false \
+    REGISTRY_FORWARDED_ALLOW_IPS="*" \
+    REGISTRY_OWNER__VALIDATION__MODE=relaxed
+
+COPY . /opt/registry-center/
+
+RUN useradd -m appuser \
+    && ln -sf /opt/registry-center /opt/app \
+    && mkdir -p /opt/registry-center/log /opt/registry-center/run /opt/registry-center/data \
+    && mkdir -p /opt/registry-center/etc/ssl /opt/registry-center/etc/sign_cert \
+    && chmod +x /opt/registry-center/bin/*.sh \
+    && chown -R appuser:appuser /opt/registry-center /opt/venv
 
 WORKDIR /opt/registry-center
 
-COPY requirements.txt .
+USER appuser
 
-RUN pip install --no-cache-dir -r requirements.txt
+EXPOSE 8080
 
-COPY . .
-
-RUN mkdir -p data log/audit \
-    && sed -i 's/\r$//' docker-entrypoint.sh 2>/dev/null || true \
-    && chmod +x docker-entrypoint.sh
-
-EXPOSE 5000
-
-ENV REGISTRY_IP=0.0.0.0
-ENV REGISTRY_PORT=5000
-ENV OPENSSL_CONF=/opt/registry-center/etc/conf/custom_openssl.cnf
-ENV FORWARDED_ALLOW_IPS=*
-
-ENTRYPOINT ["./docker-entrypoint.sh"]
+ENTRYPOINT ["/opt/registry-center/bin/entrypoint.sh"]
+CMD ["serve"]
