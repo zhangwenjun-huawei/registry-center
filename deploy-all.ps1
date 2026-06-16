@@ -12,8 +12,28 @@
 # You will be prompted for your GCP Project ID and a database password.
 # =============================================================================
 
+param(
+    [string]$ServiceName = "",
+    [string]$GCPProjectID = ""
+)
+
 $ErrorActionPreference = "Continue"
 $PSNativeCommandUseErrorActionPreference = $false
+
+# ── Clear residual env vars from previous runs ──────────────────────────────
+# Prevents cross-contamination when deploying multiple services in the same
+# PowerShell session.
+$cleanupVars = @('GCP_PROJECT_ID', 'GCP_REGION', 'DB_PASSWORD', 'PERSISTENCE_MODE', 'DB_HOST', 'DB_PORT',
+                 'DB_NAME', 'DB_USERNAME', 'DB_POOL_MIN', 'DB_POOL_MAX',
+                 'REGISTRY_ENABLE_HTTPS', 'REGISTRY_FORWARDED_ALLOW_IPS',
+                 'REGISTRY_OWNER__VALIDATION__MODE')
+foreach ($v in $cleanupVars) {
+    Remove-Item "env:$v" -ErrorAction SilentlyContinue
+}
+
+# Use param value if provided, otherwise keep current env value for Read-Host fallback
+if ($GCPProjectID) { $env:GCP_PROJECT_ID = $GCPProjectID }
+
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $scriptDir
 
@@ -64,15 +84,41 @@ if (-not $env:GCP_PROJECT_ID) {
     exit 1
 }
 
+# Resolve and validate service name
+if (-not $ServiceName) { $ServiceName = "registry-center" }
+if ($ServiceName -notmatch '^[a-z0-9]([a-z0-9\-]*[a-z0-9])?$') {
+    Write-Host "ERROR: ServiceName '$ServiceName' is invalid. Use lowercase letters, digits, and hyphens only."
+    exit 1
+}
+
 if (-not $env:GCP_REGION) { $env:GCP_REGION = "asia-east1" }
 if (-not $env:DB_PASSWORD) {
     # Try to retrieve existing password from Secret Manager
-    $secretId = "registry-center-db-password"
-    $existingPassword = gcloud secrets versions access latest --secret="${secretId}" --project="$env:GCP_PROJECT_ID" 2>$null
-    if ($existingPassword) {
-        $env:DB_PASSWORD = $existingPassword
-        Write-Host "  Using existing password from Secret Manager"
-    } else {
+    # Use project-specific secret name to isolate passwords across GCP projects
+    $sanitizeProj = $env:GCP_PROJECT_ID -replace '[^a-zA-Z0-9]', '-'
+    $lookupSecretID = "${ServiceName}-db-password-${sanitizeProj}"
+    $secretTmpRead = Join-Path $env:TEMP "${ServiceName}-secret-read.tmp"
+    $readOk = $false
+    try {
+        gcloud secrets versions access latest --secret="$lookupSecretID" --project="$env:GCP_PROJECT_ID" --out-file="$secretTmpRead" 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            $rawBytes = [System.IO.File]::ReadAllBytes($secretTmpRead)
+            if ($rawBytes.Length -ge 3 -and $rawBytes[0] -eq 0xEF -and $rawBytes[1] -eq 0xBB -and $rawBytes[2] -eq 0xBF) {
+                $rawBytes = $rawBytes[3..($rawBytes.Length - 1)]
+            }
+            $existingPassword = [System.Text.Encoding]::UTF8.GetString($rawBytes).TrimEnd("`r", "`n")
+            if ($existingPassword -and $existingPassword -notmatch '^\d+(\s+\d+)+$') {
+                $env:DB_PASSWORD = $existingPassword
+                $readOk = $true
+                Write-Host "  Using existing password from Secret Manager ($lookupSecretID)"
+            } else {
+                Write-Host "  WARNING: Stored password appears corrupted (ASCII byte values), will regenerate."
+            }
+        }
+    } catch { }
+    if (Test-Path $secretTmpRead) { Remove-Item $secretTmpRead -Force }
+
+    if (-not $readOk) {
         $env:DB_PASSWORD = Read-Host "Set a password for the PostgreSQL database (or press Enter to auto-generate)"
         if (-not $env:DB_PASSWORD) {
             $env:DB_PASSWORD = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 16 | ForEach-Object {[char]$_})
@@ -83,6 +129,7 @@ if (-not $env:DB_PASSWORD) {
 
 Write-Host ""
 Write-Host "  Configuration:"
+Write-Host "    Service    : ${ServiceName}"
 Write-Host "    Project ID : $env:GCP_PROJECT_ID"
 Write-Host "    Region     : $env:GCP_REGION"
 Write-Host ""
@@ -91,14 +138,15 @@ Write-Host ""
 Write-Host "[4/5] Setting up GCP resources (this may take 5-10 minutes)..."
 Write-Host ""
 
-$SERVICE_NAME    = "registry-center"
-$ARTIFACT_REPO   = "registry-center"
-$CLOUDSQL_INST   = "registry-center-db"
-$DB_NAME         = "registry_center"
-$DB_USER         = "registry"
-$SA_NAME         = "registry-center-sa"
+$SERVICE_NAME    = $ServiceName
+$ARTIFACT_REPO   = "openan-repo"
+$CLOUDSQL_INST   = "${SERVICE_NAME}-db"
+$DB_NAME         = ($SERVICE_NAME -replace '-', '_')
+$DB_USER         = ($SERVICE_NAME -split '-')[0]
+$SA_NAME         = "${SERVICE_NAME}-sa"
 $SA_EMAIL        = "${SA_NAME}@$env:GCP_PROJECT_ID.iam.gserviceaccount.com"
-$SECRET_ID       = "${SERVICE_NAME}-db-password"
+$secretProjectID = ($env:GCP_PROJECT_ID -replace '[^a-zA-Z0-9]', '-')
+$SECRET_ID       = "${SERVICE_NAME}-db-password-${secretProjectID}"
 $DB_TIER         = "db-f1-micro"
 $CLOUDSQL_CONN   = $env:GCP_PROJECT_ID + ":" + $env:GCP_REGION + ":" + $CLOUDSQL_INST
 
@@ -142,13 +190,17 @@ if (-not $userExists) {
 }
 
 # Secret Manager
-Write-Host "  Storing DB password in Secret Manager..."
+Write-Host "  Storing DB password in Secret Manager (${'$'}SECRET_ID = ${SECRET_ID})..."
 $secretExists = gcloud secrets describe "${SECRET_ID}" --project="$env:GCP_PROJECT_ID" 2>&1 | Out-Null; $secretExists = ($LASTEXITCODE -eq 0)
+$secretTmpFile = Join-Path $env:TEMP "${SERVICE_NAME}-secret.tmp"
+[System.IO.File]::WriteAllText($secretTmpFile, $env:DB_PASSWORD, (New-Object System.Text.UTF8Encoding $false))
 if (-not $secretExists) {
-    [System.Text.Encoding]::UTF8.GetBytes($env:DB_PASSWORD) | gcloud secrets create "${SECRET_ID}" --data-file=- --replication-policy="automatic" --project="$env:GCP_PROJECT_ID" 2>&1 | Out-Null
+    gcloud secrets create "${SECRET_ID}" --data-file="$secretTmpFile" --replication-policy="automatic" --project="$env:GCP_PROJECT_ID" 2>&1 | Out-Null
 } else {
-    Write-Host "    Secret already exists, skipping."
+    gcloud secrets versions add "${SECRET_ID}" --data-file="$secretTmpFile" --project="$env:GCP_PROJECT_ID" 2>&1 | Out-Null
+    Write-Host "    Secret already exists, updated with new value."
 }
+Remove-Item $secretTmpFile -Force
 
 # Service Account
 Write-Host "  Setting up service account..."

@@ -226,6 +226,7 @@ agent-registry> tag delete --id <uuid>            # 删除标签
 | [开发指南](docs/zh/注册中心开发指南.md) | 系统架构、Agent 注册流程、语义检索、自定义 LLM/处理器扩展 |
 | [API 参考](docs/zh/注册中心API参考.md) | 完整 REST 接口规范，含请求参数、响应格式、状态码 |
 | [安全能力指南](docs/zh/注册中心安全能力指南.md) | TLS 通信、访问控制、日志审计、内容安全、证书工具 |
+| [GCP 容器化部署指南](docs/zh/注册中心GCP容器化部署指南.md) | 在 Google Cloud Platform 上容器化部署注册中心 |
 | [LLM 配置说明](common/config/README_zh.md) | LLM 配置文件字段说明与示例 |
 
 ## 部署说明

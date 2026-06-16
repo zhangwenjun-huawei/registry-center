@@ -15,9 +15,9 @@ You need a **Google Cloud account** (sign up with Gmail) with a **GCP project** 
 1. Open your browser and go to https://console.cloud.google.com
 2. Sign in with your Gmail account
 3. At the top, click **"Select Project"** → **"New Project"**
-4. Enter any project name (e.g., `registry-center`) and click **"Create"**
+4. Enter any project name (e.g., `openan-proj`) and click **"Create"**
 5. After creation, go to **"Billing"** in the left menu → link a billing account (requires a credit card or PayPal)
-6. **Note down your Project ID** (GCP appends a number to your project name, format: `registry-center-123456`)
+6. **Note down your Project ID** (GCP appends a number to your project name, format: `openan-proj-123456`)
 
 ---
 

@@ -27,7 +27,7 @@
 #   podman run --rm -e DB_HOST=host -e DB_USERNAME=user -e DB_PASSWORD=pass \
 #     registry-center:latest init
 
-FROM python:3.10-slim AS builder
+FROM python:3.12-slim AS builder
 
 USER root
 
@@ -47,7 +47,7 @@ RUN python3 -m venv /opt/venv --copies \
     && pip install --no-cache-dir -r /tmp/requirements.txt \
     && rm -rf /tmp/requirements.txt /root/.cache/pip
 
-FROM python:3.10-slim
+FROM python:3.12-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends bash libpq5 && rm -rf /var/lib/apt/lists/*
 
