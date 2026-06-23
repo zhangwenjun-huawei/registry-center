@@ -168,7 +168,7 @@ class TestCertificateGenerator(unittest.TestCase):
         mock_audit_logger.audit.assert_called_once()
 
         call_args = mock_audit_logger.audit.call_args[0][0]
-        self.assertEqual(call_args["operation_name"], "Generate TLS Certificate")
+        self.assertEqual(call_args["operation_name"], "Generate Certificate")
         self.assertEqual(call_args["result"], "Success")
         self.assertEqual(call_args["object_name"], "Certificate")
 

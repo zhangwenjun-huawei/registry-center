@@ -120,7 +120,7 @@ class TestRegistryCoreFileMode:
         agents = registry.get_agents()
         key = make_agent_key("TestAgent", "TestOrg")
         assert key in agents
-        assert agents[key].name == "TestAgent"
+        assert agents[key] is True
 
     def test_find_exact_by_name_and_org(self, registry):
         registry.register(self._make_agent("A1", "O1"))

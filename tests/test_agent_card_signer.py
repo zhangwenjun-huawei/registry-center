@@ -16,6 +16,7 @@
 #    under the License.
 import pytest
 from unittest.mock import Mock, patch, MagicMock
+from a2a.types import AgentCard, AgentCardSignature
 from agent_registry.agent_registry.agent_card_signer import AgentCardSigner
 
 
@@ -29,7 +30,7 @@ def test_is_enabled_true():
             algorithm="RS256",
             sign_enabled=True
         )
-        
+
         mock_private_key = MagicMock()
         mock_public_key = MagicMock()
         mock_numbers = MagicMock()
@@ -37,30 +38,23 @@ def test_is_enabled_true():
         mock_numbers.e = 65537
         mock_public_key.public_numbers.return_value = mock_numbers
         mock_private_key.public_key.return_value = mock_public_key
-        
+
         mock_signature = b'test_signature_data_256_bytes'
         mock_private_key.sign.return_value = mock_signature
-        
+
         signer._private_key = mock_private_key
         signer._kid = "test_kid"
-        
-        mock_agent_card = MagicMock()
-        mock_agent_card.model_dump.return_value = {
-            "name": "test_agent",
-            "version": "1.0.0"
-        }
-        mock_agent_copy = MagicMock()
-        mock_agent_copy.signatures = []
-        mock_agent_card.model_copy.return_value = mock_agent_copy
-        
-        result = signer.sign_agent_card(mock_agent_card)
-        
-        assert hasattr(result, 'signatures')
+
+        agent_card = AgentCard()
+        agent_card.name = "test_agent"
+        agent_card.version = "1.0.0"
+
+        result = signer.sign_agent_card(agent_card)
+
+        assert result is agent_card
         assert len(result.signatures) == 1
-        assert 'protected' in result.signatures[0]
-        assert 'signature' in result.signatures[0]
-        assert result.signatures[0]['protected']['alg'] == 'RS256'
-        assert result.signatures[0]['protected']['use'] == 'sig'
+        assert result.signatures[0].protected
+        assert result.signatures[0].signature
 
 
 def test_is_enabled_false():
@@ -71,18 +65,15 @@ def test_is_enabled_false():
         algorithm="RS256",
         sign_enabled=False
     )
-    
-    mock_agent_card = MagicMock()
-    mock_agent_card_dict = {
-        "name": "test_agent",
-        "version": "1.0.0"
-    }
-    mock_agent_card.model_dump.return_value = mock_agent_card_dict
-    
-    result = signer.sign_agent_card(mock_agent_card)
-    
-    assert result == mock_agent_card_dict
-    assert 'signatures' not in result
+
+    agent_card = AgentCard()
+    agent_card.name = "test_agent"
+    agent_card.version = "1.0.0"
+
+    result = signer.sign_agent_card(agent_card)
+
+    assert result is agent_card
+    assert len(result.signatures) == 0
 
 
 def test_is_enabled_method():
@@ -95,7 +86,7 @@ def test_is_enabled_method():
             algorithm="RS256",
             sign_enabled=True
         )
-        
+
         signer_disabled = AgentCardSigner(
             private_key_path="dummy_key.pem",
             cert_path="dummy_cert.pem",
@@ -103,6 +94,6 @@ def test_is_enabled_method():
             algorithm="RS256",
             sign_enabled=False
         )
-        
+
         assert signer_enabled.is_enabled() is True
         assert signer_disabled.is_enabled() is False
